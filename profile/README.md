@@ -1,6 +1,6 @@
 # myICOR
 
-**Warm tradition meets tech precision.** myICOR is an AI-powered Personal Knowledge Assistance system built on the ICOR methodology. It runs in any LLM you already use, keeps your knowledge in plain markdown, and stays on your machine. Yours forever.
+**Warm tradition meets tech precision.** myICOR is an AI-powered learning system built on the ICOR methodology. It runs in any LLM you already use, keeps your knowledge in plain markdown, and stays on your machine. Yours forever.
 
 ## What lives here
 
