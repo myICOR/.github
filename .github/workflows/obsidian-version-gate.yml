@@ -1,0 +1,137 @@
+name: Obsidian version gate (reusable)
+
+# The drift guard. Compares the version NUMBER in manifest.json against the
+# BYTES that number names, in three places at once: the git tag, the shipping
+# branch, and the published release assets.
+#
+# Called by each product repo's .github/workflows/version-gate.yml.
+# The logic lives once, in scripts/obsidian_release_gate.py in this repo.
+
+on:
+  workflow_call:
+    inputs:
+      kind:
+        description: plugin | theme | plugin-source
+        required: true
+        type: string
+      branch:
+        description: the shipping branch
+        required: false
+        type: string
+        default: main
+      allow-build-output:
+        description: >
+          Waive the digest check for assets that are build output and so have
+          nothing in git to compare against. Only ever true for plugin-source
+          repos, and it is a knowing waiver, not a default.
+        required: false
+        type: boolean
+        default: false
+      open-issue:
+        description: open/refresh a tracking issue when the gate goes red
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out this repo (full history and tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.branch }}
+
+      - name: Make the shipping branch available as a local ref
+        run: |
+          git fetch --no-tags --force origin \
+            "+refs/heads/${{ inputs.branch }}:refs/heads/${{ inputs.branch }}" || true
+          git rev-parse --verify "${{ inputs.branch }}"
+
+      - name: Check out the gate logic
+        uses: actions/checkout@v4
+        with:
+          repository: myICOR/.github
+          ref: main
+          path: .release-gate
+
+      - name: Run the gate
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WAIVE: ${{ inputs.allow-build-output }}
+        run: |
+          set -o pipefail
+          FLAGS=""
+          if [ "$WAIVE" = "true" ]; then FLAGS="--allow-build-output"; fi
+          set +e
+          python3 .release-gate/scripts/obsidian_release_gate.py check \
+            --git-dir .git \
+            --gh-repo "$GITHUB_REPOSITORY" \
+            --kind "${{ inputs.kind }}" \
+            --branch "${{ inputs.branch }}" \
+            $FLAGS 2>&1 | tee gate-report.txt
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "## Obsidian version gate"
+            echo
+            echo '```'
+            cat gate-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or refresh the drift issue
+        if: steps.gate.outputs.code != '0' && inputs.open-issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "Version gate: the version number and the shipped bytes disagree"
+          BRANCH: ${{ inputs.branch }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The version gate went red on \`$BRANCH\` at commit \`$SHA\`."
+            echo
+            echo '```'
+            cat gate-report.txt
+            echo '```'
+            echo
+            echo "Run: $RUN_URL"
+          } > issue-body.md
+          EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body-file issue-body.md
+            echo "refreshed issue #$EXISTING"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "$TITLE" --body-file issue-body.md
+          fi
+
+      - name: Close the drift issue once the gate is green again
+        if: steps.gate.outputs.code == '0' && inputs.open-issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "Version gate: the version number and the shipped bytes disagree"
+        run: |
+          EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --repo "$GITHUB_REPOSITORY" \
+              --comment "Gate is green again at \`${{ github.sha }}\`."
+          fi
+
+      - name: Fail the run if the gate went red
+        if: steps.gate.outputs.code != '0'
+        run: |
+          echo "::error::Version gate RED - see the job summary and the tracking issue."
+          exit 1

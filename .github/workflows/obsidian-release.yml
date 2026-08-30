@@ -1,0 +1,104 @@
+name: Obsidian release from manifest (reusable)
+
+# Automatic release, so drift cannot form in the first place.
+#
+# manifest.json is the SOURCE OF TRUTH for the version. This workflow does not
+# derive a version from commit messages and never writes to manifest.json. On
+# every push to the shipping branch it asks one question: does a tag equal to
+# the manifest version exist? If not, it creates the annotated tag on that
+# commit and publishes the release with exactly the right asset set.
+#
+# Tags are bare (no v prefix) and exactly equal to the manifest version,
+# because the Obsidian directory requires that.
+#
+# Idempotent: a push that does not change the version is a no-op.
+#
+# Seam left open on purpose: tag signing (Tom decision s3g, deferred). When a
+# key is chosen, it is one flag on the tag creation in the gate script plus a
+# key import step here. Nothing else has to change.
+
+on:
+  workflow_call:
+    inputs:
+      kind:
+        description: plugin | theme | plugin-source
+        required: true
+        type: string
+      branch:
+        required: false
+        type: string
+        default: main
+      build-command:
+        description: >
+          For plugin-source repos only: the command that produces the release
+          assets. Left empty for repos that track their build output in git.
+        required: false
+        type: string
+        default: ''
+      node-version:
+        required: false
+        type: string
+        default: '20'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    concurrency:
+      group: obsidian-release-${{ github.repository }}-${{ inputs.branch }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out this repo (full history and tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.branch }}
+
+      - name: Make the shipping branch available as a local ref
+        run: |
+          git fetch --no-tags --force origin \
+            "+refs/heads/${{ inputs.branch }}:refs/heads/${{ inputs.branch }}" || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Check out the release logic
+        uses: actions/checkout@v4
+        with:
+          repository: myICOR/.github
+          ref: main
+          path: .release-gate
+
+      - name: Set up Node
+        if: inputs.build-command != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Build the release assets
+        if: inputs.build-command != ''
+        run: ${{ inputs.build-command }}
+
+      - name: Tag and release from the manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 .release-gate/scripts/obsidian_release_gate.py release \
+            --git-dir .git \
+            --gh-repo "$GITHUB_REPOSITORY" \
+            --kind "${{ inputs.kind }}" \
+            --branch "${{ inputs.branch }}" \
+            --asset-dir . | tee release-report.txt
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "## Obsidian release from manifest"
+            echo
+            echo '```'
+            cat release-report.txt 2>/dev/null || echo "(no report)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
