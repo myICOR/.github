@@ -49,7 +49,7 @@ KINDS = {
     "theme": (
         ["manifest.json", "theme.css"],
         ["manifest.json", "theme.css"],
-    ),
+    ),  # versions.json is optional for a theme; C8 checks it when present
     "plugin-source": (
         ["main.js", "manifest.json", "styles.css"],
         ["manifest.json", "styles.css"],
@@ -265,33 +265,41 @@ def do_check(a: argparse.Namespace) -> int:
     else:
         f.skip("release-exists", "no --gh-repo given, release checks skipped")
 
-    # --- C8 versions.json (plugins only; themes must not have one) -----
-    if a.kind in ("plugin", "plugin-source"):
-        min_app = str(manifest.get("minAppVersion", ""))
-        try:
-            versions = json.loads(git_bytes(gitdir, "show", f"{branch}:versions.json"))
-        except RuntimeError:
-            f.fail("versions.json", f"missing from {branch} (required for plugins)")
-        else:
-            if version not in versions:
-                f.fail("versions.json", f"has no key {version}")
-            elif str(versions[version]) != min_app:
-                f.fail(
-                    "versions.json",
-                    f"{version} -> {versions[version]!r} but manifest "
-                    f"minAppVersion is {min_app!r}",
-                )
-            else:
-                f.ok("versions.json", f"{version} -> {min_app}")
-    else:
-        if "versions.json" in tracked_files(gitdir, branch):
-            f.fail(
+    # --- C8 versions.json[version] == manifest.minAppVersion -----------
+    #     Plugins must ship it. Themes may: Obsidian's theme installer,
+    #     theme update check and community theme modal all read it through
+    #     the same versions.json resolver the plugin paths use (verified in
+    #     app.js 1.12.7 and 1.13.7), and obsidian-sample-theme ships one.
+    #     When a theme raises minAppVersion without it, members on an older
+    #     app get "no compatible version" instead of the last release that
+    #     still fits them. So: present means the same key/value check as a
+    #     plugin; absent is a failure for a plugin and a pass for a theme.
+    min_app = str(manifest.get("minAppVersion", ""))
+    try:
+        versions = json.loads(git_bytes(gitdir, "show", f"{branch}:versions.json"))
+    except RuntimeError:
+        if a.kind == "theme":
+            f.ok(
                 "versions.json",
-                "themes must not ship versions.json (it is a plugin mechanism "
-                "and the theme catalog does not read it)",
+                f"absent from {branch}; optional for a theme (ship one when "
+                f"minAppVersion rises, so older apps can still install the "
+                f"last release that fits them)",
             )
         else:
-            f.ok("versions.json", "absent, correct for a theme")
+            f.fail("versions.json", f"missing from {branch} (required for plugins)")
+    else:
+        if not isinstance(versions, dict):
+            f.fail("versions.json", "is not a JSON object of version -> minAppVersion")
+        elif version not in versions:
+            f.fail("versions.json", f"has no key {version}")
+        elif str(versions[version]) != min_app:
+            f.fail(
+                "versions.json",
+                f"{version} -> {versions[version]!r} but manifest "
+                f"minAppVersion is {min_app!r}",
+            )
+        else:
+            f.ok("versions.json", f"{version} -> {min_app}")
 
     print(f.render())
     if a.json_out:

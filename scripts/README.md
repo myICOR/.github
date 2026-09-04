@@ -34,8 +34,12 @@ thing drifted apart.
 | `plugin-source` | `main.js`, `manifest.json`, `styles.css` | manifest + styles only | icor-chat |
 
 Tags are bare, no `v` prefix, exactly equal to the manifest version, because
-the Obsidian directory requires that. Themes must not ship `versions.json`; it
-is a plugin mechanism and the theme catalog does not read it.
+the Obsidian directory requires that. Plugins must ship `versions.json`. Themes
+may: the theme installer, the theme update check and the community theme modal
+all read it through the same resolver the plugin paths use (verified in app.js
+1.12.7 and 1.13.7, four theme callers), and Obsidian's own sample theme ships
+one. A theme that raises `minAppVersion` without it leaves members on an older
+app with "no compatible version" instead of the last release that fits them.
 
 ## What the gate checks
 
@@ -46,8 +50,9 @@ is a plugin mechanism and the theme catalog does not read it.
 5. a published, non-draft release exists for that tag
 6. the release asset set is exactly the required list
 7. every release asset digest equals the same path's blob at the tag
-8. plugins: `versions.json[version] == manifest.minAppVersion`; themes: no
-   `versions.json` at all
+8. `versions.json[version] == manifest.minAppVersion`. Required for plugins;
+   optional for themes, and checked the same way whenever a theme tracks one.
+   A wrong key or a wrong value is red for both kinds.
 
 Check 4 is the clause the whole thing exists for. In the inkline incident every
 number agreed, so a version-equality check passed. Only a byte comparison
