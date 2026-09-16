@@ -101,6 +101,16 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: .release-gate
 
+      - name: The gate script is the workflow's own commit
+        env:
+          WANT: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          test -n "$WANT" || { echo "::error::job.workflow_sha is empty; refusing to run the gate script from an unpinned ref"; exit 1; }
+          GOT=$(git -C .release-gate rev-parse HEAD)
+          [ "$GOT" = "$WANT" ] || { echo "::error::gate script is at $GOT, workflow is at $WANT"; exit 1; }
+          echo "gate script pinned to $GOT"
+
       - name: Set up Node
         if: inputs.build-command != ''
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
