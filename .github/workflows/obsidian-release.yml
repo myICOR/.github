@@ -13,6 +13,19 @@ name: Obsidian release from manifest (reusable)
 #
 # Idempotent: a push that does not change the version is a no-op.
 #
+# Consumer pin policy: consumers keep referencing this workflow at @main, on
+# purpose. This is a single org with two pushers. The 2026-09-15 near-misses
+# were parallel agent sessions racing each other, not outsiders, so pinning
+# every consumer to a SHA would buy protection against a threat we do not have
+# and cost a fan-out edit across every plugin repo on every change.
+#
+# The real gap was different: the gate SCRIPT was checked out from @main
+# independently of the workflow, so a consumer could run workflow commit A
+# against script commit B. That is closed below. The script checkout pins
+# itself to ${{ job.workflow_sha }}, the commit of the reusable workflow file
+# that defines this job, so the logic always matches the workflow the consumer
+# actually resolved.
+#
 # Seam left open on purpose: tag signing (Tom decision s3g, deferred). When a
 # key is chosen, it is one flag on the tag creation in the gate script plus a
 # key import step here. Nothing else has to change.
@@ -85,7 +98,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myICOR/.github
-          ref: main
+          ref: ${{ job.workflow_sha }}
           path: .release-gate
 
       - name: Set up Node
