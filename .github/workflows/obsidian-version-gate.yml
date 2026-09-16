@@ -42,7 +42,7 @@ jobs:
       issues: write
     steps:
       - name: Check out this repo (full history and tags)
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ inputs.branch }}
@@ -54,7 +54,7 @@ jobs:
           git rev-parse --verify "${{ inputs.branch }}"
 
       - name: Check out the gate logic
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myICOR/.github
           ref: main
