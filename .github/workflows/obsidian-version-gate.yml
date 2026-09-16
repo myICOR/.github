@@ -48,10 +48,27 @@ jobs:
           ref: ${{ inputs.branch }}
 
       - name: Make the shipping branch available as a local ref
+        env:
+          BRANCH: ${{ inputs.branch }}
         run: |
+          set -euo pipefail
+          # checkout v7 checks out a REAL branch (git checkout -B "$BRANCH"
+          # refs/remotes/origin/"$BRANCH"), so fetching into
+          # refs/heads/"$BRANCH" is fetching into the checked-out branch and
+          # git refuses it locally. Fetch into the remote-tracking ref, which
+          # is always allowed, and only materialise the local branch when it
+          # is genuinely absent (older checkouts leave a detached HEAD).
+          # refs/heads/"$BRANCH" must keep pointing at the commit this job
+          # checked out and built: that is the commit the gate reads and the
+          # release tags. Never force it to origin/"$BRANCH", which can have
+          # moved since checkout.
           git fetch --no-tags --force origin \
-            "+refs/heads/${{ inputs.branch }}:refs/heads/${{ inputs.branch }}" || true
-          git rev-parse --verify "${{ inputs.branch }}"
+            "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+          if ! git rev-parse --verify --quiet "refs/heads/$BRANCH" >/dev/null
+          then
+            git branch --force "$BRANCH" "refs/remotes/origin/$BRANCH"
+          fi
+          echo "$BRANCH -> $(git rev-parse --verify "refs/heads/$BRANCH")"
 
       - name: Check out the gate logic
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
