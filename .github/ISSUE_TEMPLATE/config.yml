@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/myICOR/.github/blob/main/SUPPORT.md#where-to-go
+    about: Never a public issue. Follow the repository's SECURITY.md, or write to support@myicor.com.
+  - name: Question or how-to
+    url: https://app.myicor.com/icor-for-life
+    about: The ICOR for Life community space, where members and the team read every day.

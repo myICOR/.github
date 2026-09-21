@@ -1,0 +1,40 @@
+name: Integration request
+description: A source, service or adapter you wish this plugin talked to.
+title: "[Integration] "
+labels: ["source-adapter"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Integrations the team does not ship itself can still land as community-maintained adapters: reviewed before merge, labelled as community-maintained, and disabled or removed in any release without notice (see SUPPORT.md). Say whether you would build and maintain it.
+  - type: input
+    id: service
+    attributes:
+      label: Service or source
+      placeholder: "Notion, Asana, TickTick, a CalDAV server, ..."
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What should flow, and in which direction
+      description: Which items, which fields, one way or two way.
+    validations:
+      required: true
+  - type: textarea
+    id: api
+    attributes:
+      label: How the service exposes it
+      description: The public API or file format, with a link, and how a member authenticates (their own key or token, never a shared one).
+    validations:
+      required: true
+  - type: dropdown
+    id: maintain
+    attributes:
+      label: Would you build and maintain it as a community adapter?
+      options:
+        - "Yes, I would open the pull request and keep it working"
+        - "I could help test it"
+        - "No, this is a request only"
+    validations:
+      required: true

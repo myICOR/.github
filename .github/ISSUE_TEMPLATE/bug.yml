@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in a tagged release does not behave as documented.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One bug per issue. Please reproduce it on a clean install of the current release first;
+        a local patch, a fork or a community-maintained adapter is outside what we support (see SUPPORT.md).
+        A security problem is never a public issue: follow SECURITY.md instead.
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: From Settings, Community plugins, or manifest.json.
+      placeholder: "0.16.0"
+    validations:
+      required: true
+  - type: input
+    id: obsidian-version
+    attributes:
+      label: Obsidian version and platform
+      placeholder: "1.13.7, macOS 27.0 / iOS 26 / Windows 11"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, step by step, on a clean install of the current release.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Include the exact text of any notice or error. Never paste a key, a token or a credential.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirm
+      options:
+        - label: I reproduced this on a clean install of the current tagged release, with no local patch.
+          required: true
+        - label: This is not a security problem (those go through SECURITY.md).
+          required: true
