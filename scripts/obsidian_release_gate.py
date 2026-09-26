@@ -23,6 +23,15 @@ Repo kinds
   plugin-source  main.js is BUILD OUTPUT and not tracked; manifest.json and
                  styles.css are tracked
 
+--extra-asset NAME (repeatable, both subcommands) adds a file the plugin
+ships beside the base set, for example sql-wasm.js. An extra asset is always
+a tracked file: it is published, and checked against the tag, exactly like
+manifest.json.
+
+--rebuilt NAME=SHA256 (check only, repeatable) is the digest of a build
+output rebuilt from the tag by the caller. The published asset must equal it.
+That turns the plugin-source waiver into a real comparison.
+
 Design rule (GL-075): a check that cannot run reports UNVERIFIED and fails.
 It never reports green. A guard whose passing state is reachable without the
 thing being true is worse than no guard.
@@ -128,11 +137,39 @@ def read_manifest(gitdir: str, rev: str) -> dict:
     return json.loads(git_bytes(gitdir, "show", f"{rev}:manifest.json"))
 
 
+def asset_sets(a: argparse.Namespace) -> tuple[list[str], list[str]]:
+    """The kind's base sets plus any --extra-asset. Refuses a bad extra."""
+    assets_required, tracked_required = KINDS[a.kind]
+    extras = list(a.extra_asset or [])
+    for name in extras:
+        if not name or "/" in name or name.startswith("."):
+            raise SystemExit(f"refusing: extra asset {name!r} must be a plain "
+                             f"file name at the repo root")
+        if name in assets_required:
+            raise SystemExit(f"refusing: extra asset {name!r} is already in "
+                             f"the {a.kind} asset set")
+    if len(set(extras)) != len(extras):
+        raise SystemExit(f"refusing: duplicate extra assets {extras}")
+    return assets_required + extras, tracked_required + extras
+
+
+def parse_rebuilt(values: list[str] | None) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for v in values or []:
+        name, _, digest = v.partition("=")
+        digest = digest.strip().lower()
+        if not name or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise SystemExit(f"refusing: --rebuilt {v!r} is not NAME=SHA256")
+        out[name] = digest
+    return out
+
+
 def do_check(a: argparse.Namespace) -> int:
     f = Findings()
     gitdir = a.git_dir
     branch = a.branch
-    assets_required, tracked_required = KINDS[a.kind]
+    assets_required, tracked_required = asset_sets(a)
+    rebuilt = parse_rebuilt(a.rebuilt)
 
     # --- C1 manifest parses and carries a sane version -----------------
     try:
@@ -248,8 +285,23 @@ def do_check(a: argparse.Namespace) -> int:
                 else:
                     f.ok("asset-digest", f"{path}: {digest[:12]} matches tag blob")
             else:
-                # Build output. There is nothing in git to compare it to.
-                if a.allow_build_output:
+                # Build output. There is nothing in git to compare it to, so
+                # the only real check is a rebuild from the tag.
+                if path in rebuilt:
+                    if rebuilt[path] == digest:
+                        f.ok(
+                            "asset-digest",
+                            f"{path}: {digest[:12]} equals a rebuild from "
+                            f"tag {version}",
+                        )
+                    else:
+                        f.fail(
+                            "asset-digest",
+                            f"{path}: release asset {digest[:12]} != rebuild "
+                            f"from tag {version} {rebuilt[path][:12]} - the "
+                            f"release is not reproducible from its tag",
+                        )
+                elif a.allow_build_output:
                     f.skip(
                         "asset-digest",
                         f"{path}: build output, unverifiable against git "
@@ -330,7 +382,7 @@ def do_check(a: argparse.Namespace) -> int:
 def do_release(a: argparse.Namespace) -> int:
     gitdir = a.git_dir
     branch = a.branch
-    assets_required, tracked_required = KINDS[a.kind]
+    assets_required, tracked_required = asset_sets(a)
     manifest = read_manifest(gitdir, branch)
     version = str(manifest["version"])
     if not SEMVER.match(version):
@@ -405,8 +457,14 @@ def main() -> int:
         s.add_argument("--gh-repo", default="", help="owner/name")
         s.add_argument("--kind", required=True, choices=sorted(KINDS))
         s.add_argument("--branch", default="main")
+        s.add_argument("--extra-asset", action="append", default=[],
+                       help="a tracked file shipped beside the base set "
+                            "(repeatable)")
         if name == "check":
             s.add_argument("--allow-build-output", action="store_true")
+            s.add_argument("--rebuilt", action="append", default=[],
+                           help="NAME=SHA256 of a build output rebuilt from "
+                                "the tag (repeatable)")
             s.add_argument("--json-out", default="")
         else:
             s.add_argument("--asset-dir", default="")
