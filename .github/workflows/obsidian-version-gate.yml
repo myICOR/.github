@@ -6,6 +6,12 @@ name: Obsidian version gate (reusable)
 #
 # Called by each product repo's .github/workflows/version-gate.yml.
 # The logic lives once, in scripts/obsidian_release_gate.py in this repo.
+#
+# Rebuild check (plugin-source). With `build-command` set, a separate
+# `rebuild` job checks out the tag the manifest names, builds it with a
+# read-only token and no persisted credentials, and hands the digest of the
+# build output to the gate. The published main.js must equal it. This is the
+# real comparison that `allow-build-output` only ever waived.
 
 on:
   workflow_call:
@@ -32,9 +38,91 @@ on:
         required: false
         type: boolean
         default: true
+      build-command:
+        description: >
+          For plugin-source repos: the command that rebuilds the release
+          assets from the tag. Set it and the gate compares the published
+          build output against a rebuild instead of waiving it.
+        required: false
+        type: string
+        default: ''
+      node-version:
+        required: false
+        type: string
+        default: '20'
+      node-version-file:
+        description: wins over node-version when set, e.g. .node-version
+        required: false
+        type: string
+        default: ''
+      extra-assets:
+        description: >
+          Whitespace-separated tracked files shipped beside the kind's base
+          asset set, e.g. "sql-wasm.js sql-wasm.wasm".
+        required: false
+        type: string
+        default: ''
 
 jobs:
+  rebuild:
+    if: inputs.build-command != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      rebuilt: ${{ steps.digest.outputs.rebuilt }}
+    steps:
+      - name: Check out the shipping branch (full history and tags)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.branch }}
+          persist-credentials: false
+
+      - name: Switch to the tag the manifest names
+        id: tag
+        run: |
+          set -euo pipefail
+          V=$(python3 -c "import json; print(json.load(open('manifest.json'))['version'])")
+          if git rev-parse --verify --quiet "refs/tags/$V^{commit}" >/dev/null; then
+            git checkout --quiet --detach "refs/tags/$V"
+            echo "rebuilding tag $V at $(git rev-parse HEAD)"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            # The gate reports the missing tag; with no rebuild digest the
+            # build output also stays unverified, which is red.
+            echo "::warning::no tag $V to rebuild"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node
+        if: steps.tag.outputs.found == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version-file == '' && inputs.node-version || '' }}
+          node-version-file: ${{ inputs.node-version-file }}
+          cache: npm
+
+      - name: Rebuild
+        if: steps.tag.outputs.found == 'true'
+        run: ${{ inputs.build-command }}
+
+      - name: Digest of the rebuilt output
+        id: digest
+        if: steps.tag.outputs.found == 'true'
+        run: |
+          set -euo pipefail
+          test -f main.js || { echo "::error::the rebuild produced no main.js"; exit 1; }
+          D=$(sha256sum main.js | cut -d' ' -f1)
+          echo "main.js $D"
+          echo "rebuilt=main.js=$D" >> "$GITHUB_OUTPUT"
+
   gate:
+    needs: rebuild
+    # rebuild is skipped when there is nothing to build. The gate runs either
+    # way, and a failed rebuild leaves the build output unverified, so red.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -92,17 +180,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           WAIVE: ${{ inputs.allow-build-output }}
+          REBUILT: ${{ needs.rebuild.outputs.rebuilt }}
+          EXTRA: ${{ inputs.extra-assets }}
+          KIND: ${{ inputs.kind }}
+          BRANCH: ${{ inputs.branch }}
         run: |
           set -o pipefail
-          FLAGS=""
-          if [ "$WAIVE" = "true" ]; then FLAGS="--allow-build-output"; fi
+          FLAGS=()
+          if [ "$WAIVE" = "true" ]; then FLAGS+=(--allow-build-output); fi
+          if [ -n "$REBUILT" ]; then FLAGS+=(--rebuilt "$REBUILT"); fi
+          for name in $EXTRA; do FLAGS+=(--extra-asset "$name"); done
           set +e
           python3 .release-gate/scripts/obsidian_release_gate.py check \
             --git-dir .git \
             --gh-repo "$GITHUB_REPOSITORY" \
-            --kind "${{ inputs.kind }}" \
-            --branch "${{ inputs.branch }}" \
-            $FLAGS 2>&1 | tee gate-report.txt
+            --kind "$KIND" \
+            --branch "$BRANCH" \
+            "${FLAGS[@]}" 2>&1 | tee gate-report.txt
           echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Summarise

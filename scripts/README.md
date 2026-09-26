@@ -31,7 +31,12 @@ thing drifted apart.
 | --- | --- | --- | --- |
 | `plugin` | `main.js`, `manifest.json`, `styles.css` | all three | icor-planner, icor-focus, icor-diagrams, myicor-connect |
 | `theme` | `manifest.json`, `theme.css` | both | inkline-obsidian |
-| `plugin-source` | `main.js`, `manifest.json`, `styles.css` | manifest + styles only | icor-chat |
+| `plugin-source` | `main.js`, `manifest.json`, `styles.css` | manifest + styles only | icor-for-life-chat |
+
+`--extra-asset NAME` (workflow input `extra-assets`) adds a tracked file a
+plugin ships beside its base set, for example SQLite Viewer's `sql-wasm.js`
+and `sql-wasm.wasm`. An extra asset is published, compared with the tag and
+signed exactly like `manifest.json`.
 
 Tags are bare, no `v` prefix, exactly equal to the manifest version, because
 the Obsidian directory requires that. Plugins must ship `versions.json`. Themes
@@ -66,6 +71,21 @@ a pass. `--allow-build-output` waives it, knowingly and visibly, and the waiver
 is written into the caller workflow where it can be read. A guard whose passing
 state is reachable without the thing being true is worse than no guard, because
 its green prevents the check a missing guard would have prompted.
+
+For a `plugin-source` repo the real answer is a rebuild. Give both reusable
+workflows a `build-command`: the release builds the asset set from the tag in
+a separate read-only job, and the version gate rebuilds the same tag in its
+own read-only job and passes the digest as `--rebuilt main.js=<sha256>`. The
+published `main.js` must equal it, or the gate is red: the release is not
+reproducible from its tag.
+
+## Dry run
+
+`obsidian-release.yml` takes `dry-run: true`: it builds and runs the gate with
+`--dry-run`, and tags, publishes and signs nothing. The summary lists the
+digest of every asset that would ship. Callers wire it to `workflow_dispatch`
+with an existing tag, so the whole pipeline can be rehearsed against a real
+release without cutting one.
 
 ## Running it by hand
 
