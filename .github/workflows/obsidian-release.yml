@@ -228,6 +228,8 @@ jobs:
             --jq '.assets[] | "\(.digest | ltrimstr("sha256:"))  \(.name)"' > checksums.txt
           [ "$(wc -l < checksums.txt)" -eq 3 ] || { echo "::error::expected 3 assets"; exit 1; }
           while read -r digest name; do
+            # A missing digest renders as "null"; never sign that.
+            [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::$name: no sha256 digest"; exit 1; }
             case "$name" in main.js|manifest.json|styles.css) ;; *) echo "::error::unexpected asset $name"; exit 1;; esac
             # plugin-source: main.js is build output and not in the tag, so
             # only its published digest is signed.
