@@ -16,6 +16,28 @@ Every commit needs a Developer Certificate of Origin sign-off
 wrote the change, or have the right to submit it, under MIT. Pull requests
 with unsigned commits are not merged.
 
+The name in the sign-off is the name you go by on GitHub: a real name or a
+consistent pseudonym, as long as it is yours and not misleading. Anonymous
+sign-offs are not accepted. If you do not want your own email address in
+the history, use GitHub's private no-reply address (Settings, Emails, "Keep
+my email addresses private"). The sign-off, the name and the address become
+part of this repository's public git history, are copied into every fork
+and clone, and cannot be removed afterwards (Developer Certificate of
+Origin 1.1, clause (d)). Decide what you put in before you sign.
+
+### Keep your email address private
+
+Before you open a pull request, turn on two settings on GitHub
+(Settings, Emails): "Keep my email addresses private" and "Block command
+line pushes that expose my email". Then commit and sign off with the
+no-reply address GitHub shows there. Here is why. When a pull request is
+squash-merged, GitHub writes the merge commit under the email address your
+account uses for changes made on the website: your primary address, unless
+"Keep my email addresses private" is on. The address you committed with
+does not carry over. Git history is public, copied into every fork and
+clone, and cannot be changed afterwards, so choose the address before you
+open the pull request.
+
 ## Before you open a pull request
 
 - Open an issue first for anything bigger than a small fix, so the shape is

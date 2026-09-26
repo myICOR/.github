@@ -17,6 +17,7 @@ Closes #
 - [ ] No new dependency; or an issue agreed to it and is linked above.
 - [ ] Nothing here touches credentials, a network host, a spawned process or a workflow file; or it does, and the description says so.
 - [ ] Every commit carries a `Signed-off-by:` line (`git commit -s`, Developer Certificate of Origin 1.1).
+- [ ] GitHub email privacy is on for my account ("Keep my email addresses private"), or I am fine with my account's primary email appearing in the public history.
 
 ## Gate output
 
